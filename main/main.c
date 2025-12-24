@@ -61,54 +61,45 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(100));
     
     // ───────────────────────────────────────────────────────
-    // STEP 2: Connect to a servo
+    // STEP 2: Connect to servos 1..4 and move them to 90°
     // ───────────────────────────────────────────────────────
-    
-    uint8_t servo_id = 3;  // Change this to match your servo's ID
-    
-    ESP_LOGI(TAG, "Connecting to servo ID %d...", servo_id);
-    if (!sts_servo_ping(servo_id)) {
-        ESP_LOGE(TAG, "Servo ID %d not found. Check connections and servo ID.", servo_id);
-        return;
-    }
-    
-    ESP_LOGI(TAG, "Servo ID %d connected", servo_id);
-    
-    // ───────────────────────────────────────────────────────
-    // STEP 3: Enable torque
-    // ───────────────────────────────────────────────────────
-    
-    sts_servo_enable_torque(servo_id, true);
-    ESP_LOGI(TAG, "Torque enabled");
-    vTaskDelay(pdMS_TO_TICKS(500));
-    
-    // ───────────────────────────────────────────────────────
-    // STEP 4: Control the servo
-    // ───────────────────────────────────────────────────────
-    
-    ESP_LOGI(TAG, "Starting basic movement sequence...");
-    
-    while (1) {
-        // Move to center position (90 degrees)
-        ESP_LOGI(TAG, "Moving to 90°");
-        sts_servo_set_angle(servo_id, 0.0, SPEED_MAX);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        
-        // Move to minimum position (45 degrees)
-        ESP_LOGI(TAG, "Moving to 45°");
-        sts_servo_set_angle(servo_id, 360.0, SPEED_MAX + 100);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        
-        // Move to maximum position (135 degrees)
-        ESP_LOGI(TAG, "Moving to 135°");
-        sts_servo_set_angle(servo_id, 180.0, SPEED_MAX + 200);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        
-        // Read current position
-        float current_angle;
-        if (sts_servo_get_angle(servo_id, &current_angle)) {
-            ESP_LOGI(TAG, "Current position: %.1f°", current_angle);
+
+    ESP_LOGI(TAG, "Scanning servos 1..4 and moving to 90°");
+
+    for (uint8_t id = 1; id <= 4; id++) {
+        ESP_LOGI(TAG, "Pinging servo ID %d...", id);
+        if (!sts_servo_ping(id)) {
+            ESP_LOGW(TAG, "Servo ID %d not found; skipping", id);
+            continue;
         }
+
+        ESP_LOGI(TAG, "Servo ID %d connected", id);
+        sts_servo_enable_torque(id, true);
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        float target = (id == 1 || id == 4) ? 270.0f : 90.0f;
+        ESP_LOGI(TAG, "Setting servo %d to %.1f°", id, target);
+        sts_servo_set_angle(id, target, SPEED_MAX);
+        vTaskDelay(pdMS_TO_TICKS(200));
+
+        float angle = 0.0f;
+        if (sts_servo_get_angle(id, &angle)) {
+            ESP_LOGI(TAG, "Servo %d reported angle: %.1f°", id, angle);
+        } else {
+            ESP_LOGW(TAG, "Failed to read angle from servo %d", id);
+        }
+    }
+
+    // After initial positioning, periodically report positions
+    while (1) {
+        for (uint8_t id = 1; id <= 4; id++) {
+            float angle = 0.0f;
+            if (sts_servo_get_angle(id, &angle)) {
+                ESP_LOGI(TAG, "Servo %d: %.1f°", id, angle);
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
 }
