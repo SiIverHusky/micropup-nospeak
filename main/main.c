@@ -1,140 +1,217 @@
 /**
  * @file main.c
- * @brief Crawl Gait Demo
+ * @brief Robot Control with Minimal BLE Servo Protocol
  * 
- * Demonstrates the crawl gait walking algorithm for a quadruped robot.
- * The crawl gait uses a wave-like ripple pattern from back to front.
+ * Supports two modes:
+ *   1. BLE Control Mode - Control servos via Web Bluetooth for gait development
+ *   2. Demo Mode - Run automated gait demonstrations
+ * 
+ * BLE Commands (JSON format):
+ *   - Single move:   {"s":[fr,fl,br,bl,speed,delay_ms]}
+ *   - Multi move:    {"m":[[fr,fl,br,bl,speed,delay],[...]]}
+ *   - Stance:        {"c":"stance"}
+ *   - Ping:          {"c":"ping"}
  */
 
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
 
-// STS3032 Driver
-#include "sts3032_driver.h"
+// Dog configuration (pins, servo IDs, angle reversal)
+#include "dog_config.h"
+
+// Minimal BLE servo control
+#include "ble/ble_servo.h"
 
 // Crawl gait algorithm
 #include "gait_common.h"
 #include "crawl_gait.h"
 
-static const char *TAG = "CRAWL_DEMO";
+static const char *TAG = "ROBOT_MAIN";
 
 // ═══════════════════════════════════════════════════════
-// HARDWARE CONFIGURATION
+// BLE SERVO CALLBACKS
 // ═══════════════════════════════════════════════════════
-// Adjust these pins to match your hardware setup
 
-#define SERVO_UART_NUM      UART_NUM_1
-#define SERVO_TX_PIN        GPIO_NUM_10
-#define SERVO_RX_PIN        GPIO_NUM_11
-#define SERVO_TXEN_PIN      GPIO_NUM_3
-#define SERVO_BAUD_RATE     1000000
+/**
+ * @brief Called when BLE receives a servo move command
+ */
+static void on_servo_move(float fr, float fl, float br, float bl,
+                          uint16_t speed, uint16_t delay_ms) {
+    ESP_LOGI(TAG, "Move: FR=%.0f FL=%.0f BR=%.0f BL=%.0f spd=%u dly=%u",
+             fr, fl, br, bl, speed, delay_ms);
+    
+    // Move servos (dog_config handles right-side reversal automatically)
+    dog_servo_move_all(fr, fl, br, bl, speed);
+    
+    // Apply delay if specified
+    if (delay_ms > 0) {
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    }
+}
+
+/**
+ * @brief Called when BLE receives a stance command
+ */
+static void on_stance(void) {
+    ESP_LOGI(TAG, "Stance command received");
+    // Stop any running gait
+    if (crawl_gait_is_running()) {
+        crawl_gait_stop();
+    }
+    dog_goto_stance();
+}
+
+/**
+ * @brief Called on BLE connection state change
+ */
+static void on_connect(bool connected) {
+    if (connected) {
+        ESP_LOGI(TAG, "=== BLE Client Connected ===");
+        // Stop gait and go to stance on new connection
+        if (crawl_gait_is_running()) {
+            crawl_gait_stop();
+        }
+        dog_goto_stance();
+    } else {
+        ESP_LOGI(TAG, "=== BLE Client Disconnected ===");
+    }
+}
 
 // ═══════════════════════════════════════════════════════
-// DEMO APPLICATION
+// DEMO MODE (Optional)
+// ═══════════════════════════════════════════════════════
+
+#define RUN_DEMO_MODE 0  // Set to 1 to run demo instead of BLE mode
+
+static void run_demo_mode(void) {
+    ESP_LOGI(TAG, "Running Demo Mode");
+    
+    // Initialize crawl gait
+    crawl_gait_config_t crawl_config = {
+        .stance_angle_fr = DOG_STANCE_FRONT,
+        .stance_angle_fl = DOG_STANCE_FRONT,
+        .stance_angle_br = DOG_STANCE_BACK,
+        .stance_angle_bl = DOG_STANCE_BACK,
+        .swing_amplitude = DOG_SWING_AMPLITUDE,
+        .step_duration_ms = 250,
+        .servo_speed = DOG_SPEED_VERY_FAST,
+    };
+    crawl_gait_init(&crawl_config);
+    
+    // Demo: Forward 6s -> Right 6s -> Left 6s -> Forward 6s -> Stop
+    ESP_LOGI(TAG, ">>> FORWARD");
+    crawl_gait_start(GAIT_DIRECTION_FORWARD);
+    vTaskDelay(pdMS_TO_TICKS(6000));
+    
+    ESP_LOGI(TAG, ">>> TURN RIGHT");
+    crawl_gait_set_direction(GAIT_DIRECTION_TURN_RIGHT);
+    vTaskDelay(pdMS_TO_TICKS(6000));
+    
+    ESP_LOGI(TAG, ">>> TURN LEFT");
+    crawl_gait_set_direction(GAIT_DIRECTION_TURN_LEFT);
+    vTaskDelay(pdMS_TO_TICKS(6000));
+    
+    ESP_LOGI(TAG, ">>> FORWARD");
+    crawl_gait_set_direction(GAIT_DIRECTION_FORWARD);
+    vTaskDelay(pdMS_TO_TICKS(6000));
+    
+    crawl_gait_stop();
+    ESP_LOGI(TAG, "Demo complete!");
+}
+
+// ═══════════════════════════════════════════════════════
+// MAIN APPLICATION
 // ═══════════════════════════════════════════════════════
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Crawl Gait Demo - Wave Pattern Walking");
-    ESP_LOGI(TAG, "=======================================");
+    ESP_LOGI(TAG, "╔═══════════════════════════════════════╗");
+    ESP_LOGI(TAG, "║      MicroPupper Robot Control        ║");
+    ESP_LOGI(TAG, "║      BLE + Web Bluetooth Ready        ║");
+    ESP_LOGI(TAG, "╚═══════════════════════════════════════╝");
     
     // ───────────────────────────────────────────────────────
-    // STEP 1: Initialize the servo driver
+    // STEP 1: Initialize NVS (required for BLE)
     // ───────────────────────────────────────────────────────
     
-    sts_protocol_config_t protocol_config = {
-        .uart_num = SERVO_UART_NUM,
-        .tx_pin = SERVO_TX_PIN,
-        .rx_pin = SERVO_RX_PIN,
-        .txen_pin = SERVO_TXEN_PIN,
-        .baud_rate = SERVO_BAUD_RATE,
-    };
-    
-    esp_err_t ret = sts_protocol_init(&protocol_config);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize STS3032 driver");
-        return;
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
     }
+    ESP_ERROR_CHECK(ret);
+    ESP_LOGI(TAG, "NVS initialized");
     
-    ESP_LOGI(TAG, "Servo driver initialized");
+    // ───────────────────────────────────────────────────────
+    // STEP 2: Initialize dog hardware
+    // ───────────────────────────────────────────────────────
+    
+    if (!dog_init(NULL)) {
+        ESP_LOGW(TAG, "Some servos not responding, but continuing...");
+    }
+    ESP_LOGI(TAG, "Dog hardware initialized");
     vTaskDelay(pdMS_TO_TICKS(500));
     
     // ───────────────────────────────────────────────────────
-    // STEP 2: Initialize crawl gait
+    // STEP 3: Initialize crawl gait (for text commands)
     // ───────────────────────────────────────────────────────
     
     crawl_gait_config_t crawl_config = {
-        .stance_angle_fr = 270.0f,
-        .stance_angle_fl = 90.0f,
-        .stance_angle_br = 90.0f,
-        .stance_angle_bl = 270.0f,
-        .swing_amplitude = 25.0f,
+        .stance_angle_fr = DOG_STANCE_FRONT,
+        .stance_angle_fl = DOG_STANCE_FRONT,
+        .stance_angle_br = DOG_STANCE_BACK,
+        .stance_angle_bl = DOG_STANCE_BACK,
+        .swing_amplitude = DOG_SWING_AMPLITUDE,
         .step_duration_ms = 250,
-        .servo_speed = SPEED_VERY_FAST,
+        .servo_speed = DOG_SPEED_VERY_FAST,
     };
+    crawl_gait_init(&crawl_config);
+    ESP_LOGI(TAG, "Crawl gait initialized");
     
-    if (!crawl_gait_init(&crawl_config)) {
-        ESP_LOGW(TAG, "Some servos not responding, but continuing...");
+#if RUN_DEMO_MODE
+    // ───────────────────────────────────────────────────────
+    // Demo Mode
+    // ───────────────────────────────────────────────────────
+    run_demo_mode();
+#else
+    // ───────────────────────────────────────────────────────
+    // STEP 4: Initialize BLE Servo Control
+    // ───────────────────────────────────────────────────────
+    
+    // Initialize BLE with callbacks
+    if (!ble_servo_init(on_servo_move, on_stance, on_connect)) {
+        ESP_LOGE(TAG, "Failed to initialize BLE!");
+        return;
     }
     
-    ESP_LOGI(TAG, "Crawl gait initialized");
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    
-    // ───────────────────────────────────────────────────────
-    // STEP 3: Demo FORWARD crawling (6 seconds)
-    // ───────────────────────────────────────────────────────
-    
     ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, ">>> FORWARD - alternating sides for straight motion");
-    crawl_gait_start(GAIT_DIRECTION_FORWARD);
-    vTaskDelay(pdMS_TO_TICKS(6000));
-    
-    // ───────────────────────────────────────────────────────
-    // STEP 4: Demo TURN RIGHT (6 seconds)
-    // ───────────────────────────────────────────────────────
-    
+    ESP_LOGI(TAG, "╔═══════════════════════════════════════╗");
+    ESP_LOGI(TAG, "║  BLE Ready - Connect via Web Bluetooth ║");
+    ESP_LOGI(TAG, "║  Device: MicroPupper                   ║");
+    ESP_LOGI(TAG, "╚═══════════════════════════════════════╝");
     ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, ">>> TURN RIGHT - same-side consecutive pattern");
-    crawl_gait_set_direction(GAIT_DIRECTION_TURN_RIGHT);
-    vTaskDelay(pdMS_TO_TICKS(6000));
-    
-    // ───────────────────────────────────────────────────────
-    // STEP 5: Demo TURN LEFT (6 seconds)
-    // ───────────────────────────────────────────────────────
-    
+    ESP_LOGI(TAG, "Commands:");
+    ESP_LOGI(TAG, "  Move:   {\"s\":[fr,fl,br,bl,speed,delay]}");
+    ESP_LOGI(TAG, "  Multi:  {\"m\":[[fr,fl,br,bl,spd,dly],[...]]}");
+    ESP_LOGI(TAG, "  Stance: {\"c\":\"stance\"}");
+    ESP_LOGI(TAG, "  Ping:   {\"c\":\"ping\"}");
     ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, ">>> TURN LEFT - mirrored same-side pattern");
-    crawl_gait_set_direction(GAIT_DIRECTION_TURN_LEFT);
-    vTaskDelay(pdMS_TO_TICKS(6000));
+#endif
     
     // ───────────────────────────────────────────────────────
-    // STEP 6: Back to FORWARD (6 seconds)
-    // ───────────────────────────────────────────────────────
-    
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, ">>> FORWARD again");
-    crawl_gait_set_direction(GAIT_DIRECTION_FORWARD);
-    vTaskDelay(pdMS_TO_TICKS(6000));
-    
-    // Stop and return to stance
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "Stopping crawl gait");
-    crawl_gait_stop();
-    
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "Demo complete!");
-    ESP_LOGI(TAG, "  - FORWARD:    BL -> FR -> BR -> FL (alternating sides)");
-    ESP_LOGI(TAG, "  - TURN RIGHT: BL -> BR -> FL -> FR (same-side consecutive)");
-    ESP_LOGI(TAG, "  - TURN LEFT:  BR -> BL -> FR -> FL (mirror of turn right)");
-    
-    // ───────────────────────────────────────────────────────
-    // Idle
+    // Main loop
     // ───────────────────────────────────────────────────────
     
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(5000));
-        ESP_LOGI(TAG, "Idle - reset to run again");
+        
+        if (ble_servo_is_connected()) {
+            ESP_LOGD(TAG, "BLE connected, waiting for commands...");
+        } else {
+            ESP_LOGD(TAG, "Waiting for BLE connection...");
+        }
     }
 }

@@ -9,9 +9,12 @@
  *   Phase 3: Front-Left (2) swings forward   (opposite side!)
  * 
  * By alternating sides, push forces are balanced for straight-line motion.
+ * 
+ * Uses dog_config for automatic right-side angle reversal.
  */
 
 #include "crawl_gait.h"
+#include "dog_config.h"
 #include "sts3032_driver.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -101,6 +104,8 @@ static int get_leg_index(uint8_t servo_id, const uint8_t* sequence)
  * @brief Calculate angle based on position in swing cycle
  * @param servo_id The servo to calculate for
  * @param position 0.0 = full back, 1.0 = full forward
+ * 
+ * Uses unified angles - dog_servo_move handles reversal automatically
  */
 static float calc_angle_from_position(uint8_t servo_id, float position)
 {
@@ -110,18 +115,9 @@ static float calc_angle_from_position(uint8_t servo_id, float position)
     // Position: -1.0 = back, 0.0 = stance, +1.0 = forward
     float offset = (position * 2.0f - 1.0f) * amp;
     
-    if (servo_id == SERVO_FRONT_RIGHT || servo_id == SERVO_BACK_RIGHT) {
-        // Right legs: negative offset = forward
-        return stance - offset;
-    } else {
-        // Left legs: positive offset = forward
-        return stance + offset;
-    }
-}
-
-static void move_servo(uint8_t id, float angle)
-{
-    sts_servo_set_angle(id, angle, s_config.servo_speed);
+    // Use unified angle convention: positive offset = forward for all legs
+    // The dog_servo_move function handles right-side reversal automatically
+    return stance + offset;
 }
 
 /**
@@ -133,20 +129,22 @@ static void move_servo_for_direction(uint8_t id, float angle, gait_direction_t d
     uint16_t speed;
     
     if (direction == GAIT_DIRECTION_TURN_LEFT || direction == GAIT_DIRECTION_TURN_RIGHT) {
-        speed = SPEED_MEDIUM;  // Slower for turning
+        speed = DOG_SPEED_MEDIUM;  // Slower for turning
     } else {
-        speed = SPEED_MAX;  // Fast for forward/backward
+        speed = DOG_SPEED_MAX;  // Fast for forward/backward
     }
     
-    sts_servo_set_angle(id, angle, speed);
+    // Use dog_servo_move for automatic right-side reversal
+    dog_servo_move(id, angle, speed);
 }
 
 static void goto_stance_internal(void)
 {
-    move_servo(SERVO_FRONT_RIGHT, s_config.stance_angle_fr);
-    move_servo(SERVO_FRONT_LEFT, s_config.stance_angle_fl);
-    move_servo(SERVO_BACK_RIGHT, s_config.stance_angle_br);
-    move_servo(SERVO_BACK_LEFT, s_config.stance_angle_bl);
+    // Use dog_servo_move for automatic right-side reversal
+    dog_servo_move(SERVO_FRONT_RIGHT, s_config.stance_angle_fr, s_config.servo_speed);
+    dog_servo_move(SERVO_FRONT_LEFT, s_config.stance_angle_fl, s_config.servo_speed);
+    dog_servo_move(SERVO_BACK_RIGHT, s_config.stance_angle_br, s_config.servo_speed);
+    dog_servo_move(SERVO_BACK_LEFT, s_config.stance_angle_bl, s_config.servo_speed);
     
     for (int i = 0; i < 4; i++) {
         s_leg_positions[i] = 0.5f;  // Reset to neutral
@@ -265,15 +263,14 @@ bool crawl_gait_init(const crawl_gait_config_t *config)
              s_config.stance_angle_br, s_config.stance_angle_bl,
              s_config.swing_amplitude);
     
-    bool all_ok = true;
-    for (uint8_t id = 1; id <= 4; id++) {
-        if (!sts_servo_ping(id)) {
-            ESP_LOGE(TAG, "Servo ID %d not responding", id);
-            all_ok = false;
-        } else {
-            sts_servo_enable_torque(id, true);
-        }
+    // Check servos using dog_config
+    bool all_ok = dog_check_servos();
+    if (!all_ok) {
+        ESP_LOGW(TAG, "Some servos not responding");
     }
+    
+    // Enable torque
+    dog_set_torque(true);
     
     vTaskDelay(pdMS_TO_TICKS(100));
     goto_stance_internal();

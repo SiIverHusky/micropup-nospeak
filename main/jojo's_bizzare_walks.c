@@ -2,13 +2,13 @@
  * @file crawl_movements.c
  * @brief Exported Crawl Gait Movement Functions
  * 
- * Stance angles: FR=270, FL=90, BR=90, BL=270
+ * Stance angles: FR=90 (reversed), FL=90, BR=270 (reversed), BL=270
  * Swing amplitude: 25 degrees
  * 
- * Angle calculations:
- *   FR: forward=245, stance=270, back=295
+ * Angle calculations (after right-side reversal):
+ *   FR: forward=115, stance=90,  back=65    (reversed right side)
  *   FL: forward=115, stance=90,  back=65
- *   BR: forward=65,  stance=90,  back=115
+ *   BR: forward=295, stance=270, back=245   (reversed right side)
  *   BL: forward=295, stance=270, back=245
  * 
  * Servo order in arrays: FL, FR, BL, BR
@@ -22,21 +22,21 @@ static const char *TAG = "MOVEMENT";
 
 // Stance (neutral) angles
 #define NEUTRAL_FL  90
-#define NEUTRAL_FR  270
+#define NEUTRAL_FR  90    // 360 - 270 (reversed right side)
 #define NEUTRAL_BL  270
-#define NEUTRAL_BR  90
+#define NEUTRAL_BR  270   // 360 - 90 (reversed right side)
 
 // Forward swing angles (leg moves forward)
 #define SWING_FL    115
-#define SWING_FR    245
+#define SWING_FR    115   // 360 - 245 (reversed right side)
 #define SWING_BL    295
-#define SWING_BR    65
+#define SWING_BR    295   // 360 - 65 (reversed right side)
 
 // Push back angles (leg pushes backward)
 #define PUSH_FL     65
-#define PUSH_FR     295
+#define PUSH_FR     65    // 360 - 295 (reversed right side)
 #define PUSH_BL     245
-#define PUSH_BR     115
+#define PUSH_BR     245   // 360 - 115 (reversed right side)
 
 /**
  * @brief Move forward using crawl gait

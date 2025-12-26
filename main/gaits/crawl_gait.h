@@ -26,15 +26,16 @@ typedef gait_config_t crawl_gait_config_t;
 
 /**
  * @brief Default configuration for crawl gait
+ * Uses unified angles - reversal is handled by dog_config
  */
-#define CRAWL_GAIT_DEFAULT_CONFIG() { \
-    .stance_angle_fr = 270.0f,        \
-    .stance_angle_fl = 90.0f,         \
-    .stance_angle_br = 90.0f,         \
-    .stance_angle_bl = 270.0f,        \
-    .swing_amplitude = 25.0f,         \
-    .step_duration_ms = 250,          \
-    .servo_speed = 700                \
+#define CRAWL_GAIT_DEFAULT_CONFIG() {       \
+    .stance_angle_fr = DOG_STANCE_FRONT,    \
+    .stance_angle_fl = DOG_STANCE_FRONT,    \
+    .stance_angle_br = DOG_STANCE_BACK,     \
+    .stance_angle_bl = DOG_STANCE_BACK,     \
+    .swing_amplitude = DOG_SWING_AMPLITUDE, \
+    .step_duration_ms = 250,                \
+    .servo_speed = DOG_SPEED_MEDIUM         \
 }
 
 // ═══════════════════════════════════════════════════════
