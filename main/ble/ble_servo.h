@@ -6,8 +6,11 @@
  * Receives servo commands via Web Bluetooth and executes them.
  * 
  * Commands (JSON):
- *   {"s":[fr,fl,br,bl,speed,delay]}  - Move all 4 servos
- *   {"m":[[fr,fl,br,bl,speed,delay], ...]}  - Sequence of moves
+ *   {"s":[fr,fl,br,bl,speed,delay]}  - Move all 4 servos (unified timing)
+ *   {"m":[[fr,fl,br,bl,speed,delay], ...]}  - Sequence of unified moves
+ *   {"l":[[fr,fr_spd,fr_dly],[fl,fl_spd,fl_dly],[br,br_spd,br_dly],[bl,bl_spd,bl_dly]]}
+ *        - Per-leg move with individual speed/delay per leg
+ *   {"L":[<leg1>,<leg2>,...]}  - Sequence of per-leg moves
  *   {"p":1}  - Ping (returns {"p":1})
  *   {"r":1}  - Return to stance
  */
@@ -45,6 +48,26 @@ typedef void (*ble_servo_move_cb_t)(float fr, float fl, float br, float bl,
                                      uint16_t speed, uint16_t delay_ms);
 
 /**
+ * @brief Per-leg move parameters
+ */
+typedef struct {
+    float angle;        ///< Target angle
+    uint16_t speed;     ///< Servo speed (0-4095)
+    uint16_t delay_ms;  ///< Delay after moving this leg
+} ble_leg_move_t;
+
+/**
+ * @brief Callback for per-leg movement command
+ * Each leg moves with its own speed and delay, allowing offset timing between legs.
+ * @param fr Front-right leg parameters
+ * @param fl Front-left leg parameters
+ * @param br Back-right leg parameters
+ * @param bl Back-left leg parameters
+ */
+typedef void (*ble_servo_leg_move_cb_t)(ble_leg_move_t fr, ble_leg_move_t fl,
+                                         ble_leg_move_t br, ble_leg_move_t bl);
+
+/**
  * @brief Callback for return to stance
  */
 typedef void (*ble_servo_stance_cb_t)(void);
@@ -60,12 +83,14 @@ typedef void (*ble_servo_connect_cb_t)(bool connected);
 
 /**
  * @brief Initialize and start BLE servo controller
- * @param move_cb Callback when servo move command received
+ * @param move_cb Callback when servo move command received (unified timing)
+ * @param leg_move_cb Callback for per-leg move command (individual timing, can be NULL)
  * @param stance_cb Callback to return to stance
  * @param connect_cb Callback for connection state (optional, can be NULL)
  * @return true if successful
  */
-bool ble_servo_init(ble_servo_move_cb_t move_cb, 
+bool ble_servo_init(ble_servo_move_cb_t move_cb,
+                    ble_servo_leg_move_cb_t leg_move_cb,
                     ble_servo_stance_cb_t stance_cb,
                     ble_servo_connect_cb_t connect_cb);
 

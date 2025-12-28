@@ -210,6 +210,39 @@ input[type="text"]:focus {
     display: flex;
     gap: 10px;
     margin-bottom: 15px;
+    align-items: center;
+}
+
+.cycle-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--darker);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.cycle-control label {
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.cycle-control input {
+    width: 60px;
+    padding: 6px 8px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 14px;
+    text-align: center;
+}
+
+.cycle-control input:focus {
+    outline: none;
+    border-color: var(--primary);
 }
 
 .timeline {
@@ -548,4 +581,161 @@ input[type="text"]:focus {
     .timeline-controls {
         flex-wrap: wrap;
     }
+    
+    .mode-toggle .toggle-buttons {
+        flex-direction: column;
+    }
+    
+    .perleg-inputs .leg-row {
+        flex-wrap: wrap;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════
+   OFFSET GAIT STYLES
+   ═══════════════════════════════════════════════════════ */
+
+/* Mode Toggle */
+.mode-toggle {
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border);
+}
+
+.toggle-label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.toggle-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.mode-btn {
+    flex: 1;
+    padding: 10px 15px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--darker);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.mode-btn:hover {
+    border-color: var(--primary);
+    color: var(--text);
+}
+
+.mode-btn.active {
+    border-color: var(--primary);
+    background: rgba(74, 144, 217, 0.2);
+    color: var(--text);
+}
+
+/* Offset Settings Panel */
+.offset-settings {
+    background: var(--darker);
+    border-radius: var(--radius);
+    padding: 15px;
+    margin-bottom: 15px;
+    border: 1px solid var(--border);
+}
+
+.offset-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.offset-title {
+    font-weight: 600;
+    color: var(--success);
+}
+
+.offset-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.offset-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.offset-input {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.offset-input label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.offset-input input {
+    width: 70px;
+    padding: 6px;
+    text-align: center;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 14px;
+    font-family: monospace;
+}
+
+.offset-input input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.offset-presets {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.offset-presets > span {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.btn-small {
+    padding: 5px 10px;
+    font-size: 11px;
+}
+
+/* Offset Timeline Header */
+.offset-timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(92, 184, 92, 0.15);
+    border: 1px solid var(--success);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+}
+
+.offset-timeline-header > span:first-child {
+    font-weight: 600;
+    color: var(--success);
+}
+
+.offset-summary {
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-muted);
 }

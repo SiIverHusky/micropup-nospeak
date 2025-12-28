@@ -22,7 +22,7 @@ let bleCharacteristic = null;
 let isConnected = false;
 let keyframes = [];
 let isPlaying = false;
-let isLooping = false;
+let keyframeMode = 'unified'; // 'unified' or 'offset'
 
 // Default stance positions
 const STANCE = {
@@ -32,6 +32,15 @@ const STANCE = {
     bl: 270,
     speed: 1000,
     delay: 200
+};
+
+// Default leg offsets for diagonal gait (FL-BR, FR-BL diagonal pairs)
+// FL starts first, BR follows 30ms later, FR starts 100ms later, BL follows 30ms after FR
+let legOffsets = {
+    fl: 0,
+    br: 30,
+    fr: 100,
+    bl: 130
 };
 
 // ═══════════════════════════════════════════════════════
@@ -49,6 +58,19 @@ const elements = {
     stanceBtn: document.getElementById('stance-btn'),
     pingBtn: document.getElementById('ping-btn'),
     
+    // Mode Toggle
+    modeUnifiedBtn: document.getElementById('mode-unified-btn'),
+    modeOffsetBtn: document.getElementById('mode-offset-btn'),
+    unifiedTiming: document.getElementById('unified-timing'),
+    offsetSettings: document.getElementById('offset-settings'),
+    delayLabel: document.getElementById('delay-label'),
+    
+    // Offset inputs
+    offsetFl: document.getElementById('offset-fl'),
+    offsetBr: document.getElementById('offset-br'),
+    offsetFr: document.getElementById('offset-fr'),
+    offsetBl: document.getElementById('offset-bl'),
+    
     // Servo Controls
     frSlider: document.getElementById('fr-slider'),
     flSlider: document.getElementById('fl-slider'),
@@ -60,12 +82,13 @@ const elements = {
     blValue: document.getElementById('bl-value'),
     speedInput: document.getElementById('speed-input'),
     delayInput: document.getElementById('delay-input'),
+    
     sendBtn: document.getElementById('send-btn'),
     addKeyframeBtn: document.getElementById('add-keyframe-btn'),
     
     // Animation
     playBtn: document.getElementById('play-btn'),
-    loopBtn: document.getElementById('loop-btn'),
+    cycleCount: document.getElementById('cycle-count'),
     clearBtn: document.getElementById('clear-btn'),
     timeline: document.getElementById('timeline'),
     animationName: document.getElementById('animation-name'),
@@ -287,6 +310,35 @@ async function sendStance() {
     return sendCommand({ r: 1 });
 }
 
+/**
+ * Send offset gait animation
+ * Format: {"o":{"d":[fl,br,fr,bl],"s":speed,"k":[[fr,fl,br,bl,delay],...]}}
+ * 
+ * The device will execute each keyframe with staggered timing based on offsets.
+ * Each leg starts its keyframe sequence at its offset time.
+ * Each keyframe includes the step delay (how long to hold that position).
+ */
+async function sendOffsetGait(offsets, keyframes, speed) {
+    return sendCommand({
+        o: {
+            d: [offsets.fl, offsets.br, offsets.fr, offsets.bl],  // leg start offsets in order FL,BR,FR,BL
+            s: speed,
+            k: keyframes.map(kf => [kf.fr, kf.fl, kf.br, kf.bl, kf.delay || 200])  // angle arrays + delay
+        }
+    });
+}
+
+/**
+ * Send interleaved movement sequence for offset gait
+ * This pre-calculates the exact timing and sends individual moves
+ * Format: {"i":[[time,leg,angle,speed],...]}
+ */
+async function sendInterleavedSequence(moves) {
+    return sendCommand({
+        i: moves
+    });
+}
+
 // ═══════════════════════════════════════════════════════
 // SERVO CONTROL
 // ═══════════════════════════════════════════════════════
@@ -302,6 +354,46 @@ function getCurrentPosition() {
     };
 }
 
+/**
+ * Get current leg offsets from UI
+ */
+function getCurrentOffsets() {
+    return {
+        fl: parseInt(elements.offsetFl?.value) || 0,
+        br: parseInt(elements.offsetBr?.value) || 30,
+        fr: parseInt(elements.offsetFr?.value) || 100,
+        bl: parseInt(elements.offsetBl?.value) || 100
+    };
+}
+
+/**
+ * Apply offset preset
+ * 
+ * Diagonal gait pairing (matching KTurtle):
+ *   Pair 1: FL + BR (front-left and back-right) - start together
+ *   Pair 2: FR + BL (front-right and back-left) - start after offset
+ */
+function applyOffsetPreset(preset) {
+    const presets = {
+        // Standard diagonal: Pair 1 at 0ms, Pair 2 at 100ms
+        'diagonal': { fl: 0, br: 0, fr: 100, bl: 100 },
+        // Staggered: slight delay within pairs for smoother motion
+        'staggered': { fl: 0, br: 30, fr: 100, bl: 130 },
+        // Wave: sequential leg movement
+        'wave': { fl: 0, fr: 75, br: 150, bl: 225 }
+    };
+    
+    const values = presets[preset];
+    if (values) {
+        elements.offsetFl.value = values.fl;
+        elements.offsetBr.value = values.br;
+        elements.offsetFr.value = values.fr;
+        elements.offsetBl.value = values.bl;
+        legOffsets = values;
+        log(`Applied offset preset: ${preset}`, 'success');
+    }
+}
+
 function setPosition(pos) {
     elements.frSlider.value = elements.frValue.value = pos.fr;
     elements.flSlider.value = elements.flValue.value = pos.fl;
@@ -309,6 +401,29 @@ function setPosition(pos) {
     elements.blSlider.value = elements.blValue.value = pos.bl;
     if (pos.speed !== undefined) elements.speedInput.value = pos.speed;
     if (pos.delay !== undefined) elements.delayInput.value = pos.delay;
+}
+
+/**
+ * Set the keyframe mode (unified or offset)
+ */
+function setKeyframeMode(mode) {
+    keyframeMode = mode;
+    
+    // Update button styles
+    elements.modeUnifiedBtn.classList.toggle('active', mode === 'unified');
+    elements.modeOffsetBtn.classList.toggle('active', mode === 'offset');
+    
+    // Show/hide offset settings
+    if (elements.offsetSettings) {
+        elements.offsetSettings.style.display = mode === 'offset' ? 'block' : 'none';
+    }
+    
+    // Update delay label based on mode
+    if (elements.delayLabel) {
+        elements.delayLabel.textContent = mode === 'offset' ? 'Step Duration (ms)' : 'Delay (ms)';
+    }
+    
+    log(`Keyframe mode: ${mode === 'unified' ? 'Unified (all legs same timing)' : 'Offset Gait (staggered diagonal)'}`, 'info');
 }
 
 function syncSliderToValue(sliderId, valueId) {
@@ -376,7 +491,19 @@ function renderTimeline() {
         return;
     }
     
-    elements.timeline.innerHTML = keyframes.map((kf, i) => `
+    // In offset mode, show the current offsets at the top
+    let offsetHeader = '';
+    if (keyframeMode === 'offset') {
+        const offsets = getCurrentOffsets();
+        offsetHeader = `
+            <div class="offset-timeline-header">
+                <span>🦿 Offset Gait Mode</span>
+                <span class="offset-summary">FL:${offsets.fl}ms → BR:${offsets.br}ms → FR:${offsets.fr}ms → BL:${offsets.bl}ms</span>
+            </div>
+        `;
+    }
+    
+    elements.timeline.innerHTML = offsetHeader + keyframes.map((kf, i) => `
         <div class="keyframe" id="keyframe-${i}" style="border-left-color: ${SEGMENT_COLORS[i % SEGMENT_COLORS.length]}">
             <div class="keyframe-reorder">
                 <button onclick="moveKeyframe(${i}, -1)" ${i === 0 ? 'disabled' : ''} title="Move up">▲</button>
@@ -410,7 +537,7 @@ function renderTimeline() {
                            onchange="updateKeyframe(${i}, 'speed', this.value)">
                 </div>
                 <div class="keyframe-field delay">
-                    <label>Dly</label>
+                    <label>${keyframeMode === 'offset' ? 'Dur' : 'Dly'}</label>
                     <input type="number" value="${kf.delay}" min="0" max="2000"
                            onchange="updateKeyframe(${i}, 'delay', this.value)">
                 </div>
@@ -432,23 +559,34 @@ function renderTimingBar() {
         return;
     }
     
-    const totalTime = keyframes.reduce((sum, kf) => sum + kf.delay, 0);
-    totalTimeLabel.textContent = `${totalTime}ms`;
+    // For offset mode, calculate total animation time including offsets
+    if (keyframeMode === 'offset') {
+        const offsets = getCurrentOffsets();
+        const maxOffset = Math.max(offsets.fl, offsets.br, offsets.fr, offsets.bl);
+        const keyframeDurations = keyframes.reduce((sum, kf) => sum + (kf.delay || 0), 0);
+        const totalTime = maxOffset + keyframeDurations;
+        totalTimeLabel.textContent = `${totalTime}ms (+ ${maxOffset}ms offset)`;
+    } else {
+        const totalTime = keyframes.reduce((sum, kf) => sum + (kf.delay || 0), 0);
+        totalTimeLabel.textContent = `${totalTime}ms`;
+    }
     
-    if (totalTime === 0) {
-        timingBar.innerHTML = keyframes.map((_, i) => 
+    const totalDelay = keyframes.reduce((sum, kf) => sum + (kf.delay || 0), 0);
+    
+    if (totalDelay === 0) {
+        timingBar.innerHTML = keyframes.map((kf, i) => 
             `<div class="timing-segment" style="flex: 1; background: ${SEGMENT_COLORS[i % SEGMENT_COLORS.length]}">#${i + 1}</div>`
         ).join('');
         return;
     }
     
     timingBar.innerHTML = keyframes.map((kf, i) => {
-        const percentage = (kf.delay / totalTime) * 100;
+        const delay = kf.delay || 0;
         return `<div class="timing-segment" id="timing-segment-${i}"
-                     style="flex: ${kf.delay}; background: ${SEGMENT_COLORS[i % SEGMENT_COLORS.length]}"
+                     style="flex: ${delay}; background: ${SEGMENT_COLORS[i % SEGMENT_COLORS.length]}"
                      onclick="scrollToKeyframe(${i})"
-                     title="Keyframe ${i + 1}: ${kf.delay}ms">
-                    #${i + 1} (${kf.delay}ms)
+                     title="Keyframe ${i + 1}: ${delay}ms">
+                    #${i + 1} (${delay}ms)
                 </div>`;
     }).join('');
 }
@@ -476,6 +614,53 @@ function highlightKeyframe(index) {
 // ANIMATION PLAYBACK
 // ═══════════════════════════════════════════════════════
 
+/**
+ * Build interleaved movement sequence for offset gait
+ * 
+ * Given keyframes and leg offsets, creates a sorted list of individual movements
+ * with absolute timestamps. This allows proper staggered execution.
+ * 
+ * @returns Array of [time_ms, leg_id, angle, speed]
+ *   leg_id: 0=FR, 1=FL, 2=BR, 3=BL
+ */
+function buildInterleavedSequence(keyframes, offsets, defaultSpeed) {
+    const movements = [];
+    const legs = ['fr', 'fl', 'br', 'bl'];
+    const legIds = { fr: 0, fl: 1, br: 2, bl: 3 };
+    
+    for (let legIdx = 0; legIdx < legs.length; legIdx++) {
+        const leg = legs[legIdx];
+        let time = offsets[leg];  // Start time for this leg
+        
+        for (let kfIdx = 0; kfIdx < keyframes.length; kfIdx++) {
+            const kf = keyframes[kfIdx];
+            const angle = kf[leg];
+            const speed = kf.speed || defaultSpeed;
+            const duration = kf.delay || 100;
+            
+            movements.push({
+                time: time,
+                leg: leg,
+                legId: legIds[leg],
+                angle: angle,
+                speed: speed,
+                kfIndex: kfIdx
+            });
+            
+            time += duration;  // Move to next keyframe time for this leg
+        }
+    }
+    
+    // Sort by time, then by leg order (FL, BR, FR, BL for diagonal pattern)
+    const legOrder = { fl: 0, br: 1, fr: 2, bl: 3 };
+    movements.sort((a, b) => {
+        if (a.time !== b.time) return a.time - b.time;
+        return legOrder[a.leg] - legOrder[b.leg];
+    });
+    
+    return movements;
+}
+
 async function playAnimation() {
     if (keyframes.length === 0) {
         log('No keyframes to play!', 'error');
@@ -490,42 +675,89 @@ async function playAnimation() {
     isPlaying = true;
     elements.playBtn.textContent = '⏹️ Stop';
     
-    log(`Sending ${keyframes.length} keyframes as queued sequence...`, 'info');
-    
     try {
-        do {
-            // Send the entire sequence at once to avoid BLE latency affecting timing
-            const success = await sendServoSequence(keyframes);
+        // Get cycle count
+        const cycles = parseInt(elements.cycleCount.value) || 1;
+        
+        if (keyframeMode === 'offset') {
+            // Offset Gait Mode - staggered leg execution
+            const offsets = getCurrentOffsets();
+            const speed = parseInt(elements.speedInput.value) || 1000;
+            
+            // Duplicate keyframes for multiple cycles
+            const repeatedKeyframes = [];
+            for (let c = 0; c < cycles; c++) {
+                repeatedKeyframes.push(...keyframes);
+            }
+            
+            log(`Playing offset gait ${cycles} cycle(s) (FL:${offsets.fl}ms BR:${offsets.br}ms FR:${offsets.fr}ms BL:${offsets.bl}ms)...`, 'info');
+            
+            // Build and send the interleaved sequence
+            const movements = buildInterleavedSequence(repeatedKeyframes, offsets, speed);
+            
+            // Calculate total animation time
+            const maxOffset = Math.max(offsets.fl, offsets.br, offsets.fr, offsets.bl);
+            const totalDuration = repeatedKeyframes.reduce((sum, kf) => sum + (kf.delay || 100), 0);
+            const totalTime = maxOffset + totalDuration;
+            
+            // Send the offset gait command with repeated keyframes
+            const success = await sendOffsetGait(offsets, repeatedKeyframes, speed);
+            
+            if (!success) {
+                log('Failed to send offset gait', 'error');
+                return;
+            }
+            
+            // Animate UI to show progress
+            let lastKfIndex = -1;
+            for (const move of movements) {
+                if (!isPlaying) break;
+                
+                const originalIndex = move.kfIndex % keyframes.length;
+                if (originalIndex !== lastKfIndex) {
+                    highlightKeyframe(originalIndex);
+                    setPosition(keyframes[originalIndex]);
+                    lastKfIndex = originalIndex;
+                }
+                
+                // Wait for next movement
+                const nextMove = movements[movements.indexOf(move) + 1];
+                if (nextMove) {
+                    await sleep(nextMove.time - move.time);
+                }
+            }
+            
+            // Wait for the last movements to complete
+            await sleep(100);
+            
+        } else {
+            // Unified Mode - all legs move together
+            // Duplicate keyframes for multiple cycles
+            const repeatedKeyframes = [];
+            for (let c = 0; c < cycles; c++) {
+                repeatedKeyframes.push(...keyframes);
+            }
+            
+            log(`Sending ${repeatedKeyframes.length} keyframes (${cycles} cycle(s))...`, 'info');
+            
+            const success = await sendServoSequence(repeatedKeyframes);
             
             if (!success) {
                 log('Failed to send animation queue', 'error');
-                break;
+                return;
             }
             
-            // Animate the UI to show progress (visual feedback only)
-            const totalTime = keyframes.reduce((sum, kf) => sum + kf.delay, 0);
-            let elapsed = 0;
-            
-            for (let i = 0; i < keyframes.length; i++) {
+            // Animate the UI to show progress
+            for (let i = 0; i < repeatedKeyframes.length; i++) {
                 if (!isPlaying) break;
                 
-                const kf = keyframes[i];
-                highlightKeyframe(i);
-                setPosition(kf);
-                
-                // Wait for the delay duration
+                const kf = repeatedKeyframes[i];
+                const originalIndex = i % keyframes.length;
+                highlightKeyframe(originalIndex);
+                setPosition(keyframes[originalIndex]);
                 await sleep(kf.delay);
-                elapsed += kf.delay;
             }
-            
-            // If looping, wait a moment before resending
-            if (isLooping && isPlaying) {
-                highlightKeyframe(-1);
-                log('Loop: Resending animation queue...', 'info');
-                await sleep(100);
-            }
-            
-        } while (isLooping && isPlaying);
+        }
         
     } catch (error) {
         log(`Playback error: ${error.message}`, 'error');
@@ -541,12 +773,7 @@ function stopAnimation() {
     log('Animation stopped', 'info');
 }
 
-function toggleLoop() {
-    isLooping = !isLooping;
-    elements.loopBtn.classList.toggle('active', isLooping);
-    elements.loopBtn.style.background = isLooping ? 'var(--success)' : '';
-    log(`Loop: ${isLooping ? 'ON' : 'OFF'}`, 'info');
-}
+
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -864,7 +1091,6 @@ function initEventListeners() {
     
     // Animation
     elements.playBtn.addEventListener('click', playAnimation);
-    elements.loopBtn.addEventListener('click', toggleLoop);
     elements.clearBtn.addEventListener('click', clearKeyframes);
     elements.saveBtn.addEventListener('click', saveAnimation);
     elements.addBtn.addEventListener('click', () => {
@@ -910,6 +1136,8 @@ window.addAnimation = addAnimation;
 window.deleteAnimation = deleteAnimation;
 window.exportAnimation = exportAnimation;
 window.toggleAnimationSelection = toggleAnimationSelection;
+window.setKeyframeMode = setKeyframeMode;
+window.applyOffsetPreset = applyOffsetPreset;
 
 // Start
 document.addEventListener('DOMContentLoaded', init);

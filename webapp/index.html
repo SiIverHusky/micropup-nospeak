@@ -39,41 +39,87 @@
         <!-- Servo Control Sliders -->
         <section class="panel" id="servo-panel">
             <h2>Servo Positions</h2>
+            
+            <!-- Keyframe Mode Toggle -->
+            <div class="mode-toggle">
+                <label class="toggle-label">Keyframe Mode:</label>
+                <div class="toggle-buttons">
+                    <button id="mode-unified-btn" class="mode-btn active" onclick="setKeyframeMode('unified')">
+                        🔗 Unified (All legs same timing)
+                    </button>
+                    <button id="mode-offset-btn" class="mode-btn" onclick="setKeyframeMode('offset')">
+                        🦿 Offset Gait (Staggered diagonal)
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Offset Gait Settings (shown in offset mode) -->
+            <div class="offset-settings" id="offset-settings" style="display: none;">
+                <div class="offset-header">
+                    <span class="offset-title">Leg Start Offsets (ms)</span>
+                    <span class="offset-hint">Diagonal pairs: FL+BR (Pair 1), FR+BL (Pair 2)</span>
+                </div>
+                <div class="offset-grid">
+                    <div class="offset-input">
+                        <label>FL</label>
+                        <input type="number" id="offset-fl" min="0" max="2000" value="0">
+                    </div>
+                    <div class="offset-input">
+                        <label>BR</label>
+                        <input type="number" id="offset-br" min="0" max="2000" value="0">
+                    </div>
+                    <div class="offset-input">
+                        <label>FR</label>
+                        <input type="number" id="offset-fr" min="0" max="2000" value="100">
+                    </div>
+                    <div class="offset-input">
+                        <label>BL</label>
+                        <input type="number" id="offset-bl" min="0" max="2000" value="100">
+                    </div>
+                </div>
+                <div class="offset-presets">
+                    <span>Presets:</span>
+                    <button class="btn btn-secondary btn-small" onclick="applyOffsetPreset('diagonal')">Diagonal (100ms)</button>
+                    <button class="btn btn-secondary btn-small" onclick="applyOffsetPreset('staggered')">Staggered (30ms)</button>
+                    <button class="btn btn-secondary btn-small" onclick="applyOffsetPreset('wave')">Wave</button>
+                </div>
+            </div>
+            
             <div class="servo-grid">
                 <!-- Front Left -->
-                <div class="servo-control">
+                <div class="servo-control" data-leg="fl">
                     <label for="fl-slider">Front Left (FL)</label>
                     <input type="range" id="fl-slider" min="0" max="360" value="90">
                     <input type="number" id="fl-value" min="0" max="360" value="90">
                 </div>
                 <!-- Front Right -->
-                <div class="servo-control">
+                <div class="servo-control" data-leg="fr">
                     <label for="fr-slider">Front Right (FR)</label>
                     <input type="range" id="fr-slider" min="0" max="360" value="90">
                     <input type="number" id="fr-value" min="0" max="360" value="90">
                 </div>
                 <!-- Back Left -->
-                <div class="servo-control">
+                <div class="servo-control" data-leg="bl">
                     <label for="bl-slider">Back Left (BL)</label>
                     <input type="range" id="bl-slider" min="0" max="360" value="270">
                     <input type="number" id="bl-value" min="0" max="360" value="270">
                 </div>
                 <!-- Back Right -->
-                <div class="servo-control">
+                <div class="servo-control" data-leg="br">
                     <label for="br-slider">Back Right (BR)</label>
                     <input type="range" id="br-slider" min="0" max="360" value="270">
                     <input type="number" id="br-value" min="0" max="360" value="270">
                 </div>
             </div>
             
-            <!-- Speed and Delay -->
-            <div class="control-row">
+            <!-- Speed and Step Duration -->
+            <div class="control-row" id="unified-timing">
                 <div class="control-group">
                     <label for="speed-input">Speed (0-4095)</label>
                     <input type="number" id="speed-input" min="0" max="4095" value="1000">
                 </div>
                 <div class="control-group">
-                    <label for="delay-input">Delay (ms)</label>
+                    <label for="delay-input" id="delay-label">Delay (ms)</label>
                     <input type="number" id="delay-input" min="0" max="2000" value="200">
                 </div>
             </div>
@@ -101,7 +147,10 @@
             
             <div class="timeline-controls">
                 <button id="play-btn" class="btn btn-success">▶️ Play Queue</button>
-                <button id="loop-btn" class="btn btn-info">🔁 Loop</button>
+                <div class="cycle-control">
+                    <label for="cycle-count">Cycles:</label>
+                    <input type="number" id="cycle-count" min="1" max="100" value="1">
+                </div>
                 <button id="clear-btn" class="btn btn-danger">🗑️ Clear</button>
             </div>
             
