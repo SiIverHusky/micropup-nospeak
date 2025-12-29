@@ -115,7 +115,7 @@
 #define DOG_IMU_GYRO_ODR            QMI8658A_GYRO_ODR_500
 
 // IMU logging configuration (change threshold before logging)
-#define DOG_IMU_ACCEL_CHANGE_THRESHOLD  0.5f    // m/s² change before logging
+#define DOG_IMU_ACCEL_CHANGE_THRESHOLD  1.5f    // m/s² change before logging
 #define DOG_IMU_GYRO_CHANGE_THRESHOLD   5.0f    // dps change before logging
 
 /**

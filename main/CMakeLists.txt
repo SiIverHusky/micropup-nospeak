@@ -3,6 +3,9 @@ idf_component_register(
         "main.c"
         "dog/dog_config.c"
         "dog/dog_imu.c"
+        # Reaction system (user interaction animations)
+        "reaction/reaction_config.c"
+        "reaction/walk_forward_reaction.c"
         # Different gait implementations
         "gaits/trot_gait.c"
         "gaits/walk_gait.c"
@@ -19,6 +22,7 @@ idf_component_register(
     INCLUDE_DIRS 
         "."
         "dog"
+        "reaction"
         "gaits"
         "util"
         "examples"

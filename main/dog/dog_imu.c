@@ -7,6 +7,7 @@
  */
 
 #include "dog_config.h"
+#include "reaction/reaction_config.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -64,6 +65,9 @@ bool dog_imu_init(void)
     // Run diagnostics
     qmi8658a_debug_status();
     
+    // Initialize reaction system
+    reaction_init();
+    
     ESP_LOGI(TAG, "IMU initialized successfully");
     return true;
 }
@@ -87,6 +91,9 @@ static void imu_task(void *pvParameters)
     
     while (1) {
         if (dog_imu_read(&data)) {
+            // Check for user interaction reactions first
+            reaction_process_imu(&data);
+            
             // Log if first reading or significant change
             if (g_first_log || has_significant_change(&data, &g_last_logged_data)) {
                 ESP_LOGI(TAG, "ACCEL: X=%+7.2f Y=%+7.2f Z=%+7.2f m/s² | GYRO: X=%+7.1f Y=%+7.1f Z=%+7.1f dps",
