@@ -221,6 +221,14 @@ void app_main(void)
     ESP_LOGI(TAG, "Dog hardware initialized");
     vTaskDelay(pdMS_TO_TICKS(500));
     
+    // Initialize IMU with smart logging
+    if (dog_imu_init()) {
+        dog_imu_task_start();
+        ESP_LOGI(TAG, "IMU initialized with smart logging");
+    } else {
+        ESP_LOGW(TAG, "IMU initialization failed, continuing without IMU");
+    }
+    
     // ───────────────────────────────────────────────────────
     // STEP 3: Initialize crawl gait (for text commands)
     // ───────────────────────────────────────────────────────

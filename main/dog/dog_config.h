@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include "driver/uart.h"
 #include "driver/gpio.h"
+#include "qmi8658a.h"
 
 // ═══════════════════════════════════════════════════════
 // UART CONFIGURATION
@@ -96,6 +97,41 @@
 #define DOG_SPEED_FAST              1500
 #define DOG_SPEED_VERY_FAST         3000
 #define DOG_SPEED_MAX               4095
+
+// ═══════════════════════════════════════════════════════
+// IMU CONFIGURATION (QMI8658A)
+// ═══════════════════════════════════════════════════════
+
+#define DOG_IMU_I2C_NUM             I2C_NUM_0
+#define DOG_IMU_SDA_PIN             GPIO_NUM_1
+#define DOG_IMU_SCL_PIN             GPIO_NUM_2
+#define DOG_IMU_I2C_FREQ_HZ         400000
+#define DOG_IMU_I2C_ADDR            0x6A
+
+// IMU sensor configuration
+#define DOG_IMU_ACCEL_RANGE         QMI8658A_ACCEL_RANGE_8G
+#define DOG_IMU_ACCEL_ODR           QMI8658A_ACCEL_ODR_500
+#define DOG_IMU_GYRO_RANGE          QMI8658A_GYRO_RANGE_512
+#define DOG_IMU_GYRO_ODR            QMI8658A_GYRO_ODR_500
+
+// IMU logging configuration (change threshold before logging)
+#define DOG_IMU_ACCEL_CHANGE_THRESHOLD  0.5f    // m/s² change before logging
+#define DOG_IMU_GYRO_CHANGE_THRESHOLD   5.0f    // dps change before logging
+
+/**
+ * @brief Default IMU configuration for the dog
+ */
+#define DOG_IMU_DEFAULT_CONFIG() {                      \
+    .i2c_num = DOG_IMU_I2C_NUM,                         \
+    .sda_pin = DOG_IMU_SDA_PIN,                         \
+    .scl_pin = DOG_IMU_SCL_PIN,                         \
+    .i2c_freq_hz = DOG_IMU_I2C_FREQ_HZ,                 \
+    .i2c_addr = DOG_IMU_I2C_ADDR,                       \
+    .accel_range = DOG_IMU_ACCEL_RANGE,                 \
+    .accel_odr = DOG_IMU_ACCEL_ODR,                     \
+    .gyro_range = DOG_IMU_GYRO_RANGE,                   \
+    .gyro_odr = DOG_IMU_GYRO_ODR                        \
+}
 
 // ═══════════════════════════════════════════════════════
 // DOG CONFIGURATION STRUCTURE
@@ -213,5 +249,28 @@ bool dog_check_servos(void);
  * @param enable true to enable torque
  */
 void dog_set_torque(bool enable);
+
+// ═══════════════════════════════════════════════════════
+// IMU FUNCTIONS
+// ═══════════════════════════════════════════════════════
+
+/**
+ * @brief Initialize the IMU with dog-specific configuration
+ * @return true if initialization successful
+ */
+bool dog_imu_init(void);
+
+/**
+ * @brief Read IMU data
+ * @param out_data Pointer to output structure
+ * @return true if read successful
+ */
+bool dog_imu_read(qmi8658a_data_t *out_data);
+
+/**
+ * @brief Start the IMU monitoring task with smart logging
+ * Only logs when values change significantly
+ */
+void dog_imu_task_start(void);
 
 #endif // DOG_CONFIG_H

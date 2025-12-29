@@ -2,6 +2,8 @@ idf_component_register(
     SRCS 
         "main.c"
         "dog/dog_config.c"
+        "dog/dog_imu.c"
+        # Different gait implementations
         "gaits/trot_gait.c"
         "gaits/walk_gait.c"
         "gaits/creep_gait.c"
@@ -27,4 +29,5 @@ idf_component_register(
         bt
         json
         nvs_flash
+        qmi8658a
 )
