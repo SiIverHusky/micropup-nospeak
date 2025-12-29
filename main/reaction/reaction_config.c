@@ -20,6 +20,10 @@ static const char *TAG = "REACTION";
 static TickType_t last_reaction_time = 0;
 static bool initialized = false;
 
+// Previous acceleration reading for delta calculation
+static float prev_accel_x = 0.0f;
+static bool has_prev_reading = false;
+
 // ═══════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════
@@ -48,10 +52,13 @@ static void update_reaction_time(void)
 
 void reaction_init(void)
 {
-    ESP_LOGI(TAG, "Reaction system initialized");
-    ESP_LOGI(TAG, "Front push threshold: +%.1f m/s²", REACTION_PUSH_FRONT_THRESHOLD);
-    ESP_LOGI(TAG, "Back push threshold: %.1f m/s²", REACTION_PUSH_BACK_THRESHOLD);
+    ESP_LOGI(TAG, "Reaction system initialized (delta-based detection)");
+    ESP_LOGI(TAG, "Delta threshold: %.1f m/s², Min accel: %.1f m/s²",
+             REACTION_DELTA_THRESHOLD, REACTION_MIN_ACCEL);
     ESP_LOGI(TAG, "Cooldown: %d ms", REACTION_COOLDOWN_MS);
+    
+    prev_accel_x = 0.0f;
+    has_prev_reading = false;
     
     initialized = true;
 }
@@ -62,30 +69,44 @@ void reaction_process_imu(const qmi8658a_data_t *data)
         return;
     }
     
+    float current_accel_x = data->accel_x;
+    
+    // Need a previous reading to calculate delta
+    if (!has_prev_reading) {
+        prev_accel_x = current_accel_x;
+        has_prev_reading = true;
+        return;
+    }
+    
+    // Calculate delta (change from previous reading)
+    float delta = current_accel_x - prev_accel_x;
+    
+    // Store current as previous for next iteration
+    prev_accel_x = current_accel_x;
+    
     // Check cooldown
     if (!is_cooldown_expired()) {
         return;
     }
     
-    // Check for front push (+X direction)
-    if (data->accel_x >= REACTION_PUSH_FRONT_THRESHOLD) {
-        ESP_LOGI(TAG, "Front push detected! (%.2f m/s²)", data->accel_x);
+    // Front push: large positive delta AND current reading is positive
+    // (acceleration suddenly increased in +X direction)
+    if (delta >= REACTION_DELTA_THRESHOLD && current_accel_x >= REACTION_MIN_ACCEL) {
+        ESP_LOGI(TAG, "Front push detected! (delta: +%.2f, accel: %.2f m/s²)",
+                 delta, current_accel_x);
         update_reaction_time();
-        
-        // Play walk forward animation for 3 cycles
         walk_forward_play(3);
-        
         return;
     }
     
-    // Check for back push (-X direction)
-    if (data->accel_x <= REACTION_PUSH_BACK_THRESHOLD) {
-        ESP_LOGI(TAG, "Back push detected! (%.2f m/s²)", data->accel_x);
+    // Back push: large negative delta AND current reading is negative
+    // (acceleration suddenly increased in -X direction)
+    if (delta <= -REACTION_DELTA_THRESHOLD && current_accel_x <= -REACTION_MIN_ACCEL) {
+        ESP_LOGI(TAG, "Back push detected! (delta: %.2f, accel: %.2f m/s²)",
+                 delta, current_accel_x);
         update_reaction_time();
-        
         // TODO: Add backward reaction animation here
         ESP_LOGW(TAG, "Back push reaction not yet implemented");
-        
         return;
     }
 }

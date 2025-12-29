@@ -13,14 +13,17 @@
 #include "qmi8658a.h"
 
 // ═══════════════════════════════════════════════════════
-// ACCELERATION THRESHOLDS
+// DELTA-BASED PUSH DETECTION
 // ═══════════════════════════════════════════════════════
+// Detects sudden changes in acceleration (impulse) rather than
+// sustained thresholds. A push causes a large delta between readings.
 
-// Threshold for detecting a push from the front (+X direction)
-#define REACTION_PUSH_FRONT_THRESHOLD   5.0f    // m/s²
+// Minimum delta (change) in accel_x to detect a push (m/s² per sample)
+// This is the difference between current and previous reading
+#define REACTION_DELTA_THRESHOLD        5.0f    // m/s² change
 
-// Threshold for detecting a push from the back (-X direction)
-#define REACTION_PUSH_BACK_THRESHOLD    -5.0f   // m/s²
+// Minimum absolute acceleration to consider (filters out noise deltas)
+#define REACTION_MIN_ACCEL              3.0f    // m/s²
 
 // Minimum time between reactions (debounce)
 #define REACTION_COOLDOWN_MS            2000    // 2 seconds
