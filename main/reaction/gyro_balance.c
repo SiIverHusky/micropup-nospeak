@@ -233,8 +233,8 @@ void gyro_balance_enable(bool enable)
         last_balance_time = xTaskGetTickCount();
         ESP_LOGI(TAG, "Gyro balance ENABLED");
     } else if (!enable && balance_enabled) {
-        // Return to stance when disabling
-        dog_goto_stance();
+        // Return to stance smoothly when disabling
+        dog_goto_stance_smooth();
         ESP_LOGI(TAG, "Gyro balance DISABLED - returning to stance");
     }
     balance_enabled = enable;

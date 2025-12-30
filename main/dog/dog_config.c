@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <math.h>
 
 static const char *TAG = "DOG";
 
@@ -155,6 +156,75 @@ void dog_goto_stance(void)
         s_config.stance_back,   // BR
         s_config.stance_back,   // BL
         s_config.default_speed
+    );
+}
+
+/**
+ * @brief Calculate dynamic speed based on angle delta
+ */
+static uint16_t calculate_dynamic_speed(float angle_delta)
+{
+    float abs_delta = fabsf(angle_delta);
+    float speed_ratio = abs_delta / DOG_STANCE_SPEED_THRESHOLD;
+    
+    if (speed_ratio > 1.0f) {
+        speed_ratio = 1.0f;
+    }
+    
+    // Apply power curve to bias toward lower speeds
+    speed_ratio = powf(speed_ratio, DOG_STANCE_SPEED_CURVE);
+    
+    return (uint16_t)(DOG_STANCE_SPEED_MIN + 
+                      speed_ratio * (DOG_STANCE_SPEED_MAX - DOG_STANCE_SPEED_MIN));
+}
+
+void dog_goto_stance_smooth(void)
+{
+    // Read current angles for each servo
+    float current_angles[4] = {0};
+    float target_angles[4] = {
+        apply_reversal(DOG_SERVO_FR, s_config.stance_front),
+        s_config.stance_front,  // FL - no reversal
+        apply_reversal(DOG_SERVO_BR, s_config.stance_back),
+        s_config.stance_back    // BL - no reversal
+    };
+    
+    // Try to read current angles
+    bool angles_read = true;
+    for (uint8_t i = 0; i < 4; i++) {
+        if (!sts_servo_get_angle(i + 1, &current_angles[i])) {
+            angles_read = false;
+            break;
+        }
+    }
+    
+    // If we couldn't read angles, fall back to default speed
+    if (!angles_read) {
+        dog_goto_stance();
+        return;
+    }
+    
+    // Calculate max delta across all servos
+    float max_delta = 0.0f;
+    for (uint8_t i = 0; i < 4; i++) {
+        float delta = fabsf(target_angles[i] - current_angles[i]);
+        if (delta > max_delta) {
+            max_delta = delta;
+        }
+    }
+    
+    // Calculate dynamic speed based on largest movement needed
+    uint16_t dynamic_speed = calculate_dynamic_speed(max_delta);
+    
+    ESP_LOGD(TAG, "Stance smooth: max_delta=%.1f° speed=%d", max_delta, dynamic_speed);
+    
+    // Move all servos with calculated speed
+    dog_servo_move_all(
+        s_config.stance_front,  // FR
+        s_config.stance_front,  // FL
+        s_config.stance_back,   // BR
+        s_config.stance_back,   // BL
+        dynamic_speed
     );
 }
 

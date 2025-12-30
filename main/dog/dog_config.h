@@ -99,6 +99,16 @@
 #define DOG_SPEED_MAX               4095
 
 // ═══════════════════════════════════════════════════════
+// DYNAMIC STANCE SPEED (prevents shaking)
+// ═══════════════════════════════════════════════════════
+// Speed scales based on distance to target to prevent oscillation
+
+#define DOG_STANCE_SPEED_MIN        100     // Speed for small corrections
+#define DOG_STANCE_SPEED_MAX        1500    // Speed for large movements
+#define DOG_STANCE_SPEED_THRESHOLD  30.0f   // Angle delta for max speed (degrees)
+#define DOG_STANCE_SPEED_CURVE      1.5f    // Power curve (>1 = bias toward slow)
+
+// ═══════════════════════════════════════════════════════
 // IMU CONFIGURATION (QMI8658A)
 // ═══════════════════════════════════════════════════════
 
@@ -216,6 +226,14 @@ void dog_servo_move_all(float angle_fr, float angle_fl,
  * @brief Move all servos to stance position
  */
 void dog_goto_stance(void);
+
+/**
+ * @brief Move all servos to stance with dynamic speed
+ * 
+ * Uses slower speed for small corrections to prevent shaking,
+ * faster speed for large movements.
+ */
+void dog_goto_stance_smooth(void);
 
 /**
  * @brief Get the stance angle for a specific servo
